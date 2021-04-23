@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -10,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hashicorp/vault-plugin-auth-cf/signatures"
+	cfauth "github.com/hashicorp/vault-plugin-auth-cf"
 	"github.com/hashicorp/vault/api"
 )
 
@@ -50,69 +49,6 @@ var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func cfAuth(c *api.Client, m map[string]string) (*api.Secret, error) {
-	mount, ok := m["mount"]
-	if !ok {
-		mount = "cf"
-	}
-
-	role := m["role"]
-	if role == "" {
-		return nil, errors.New(`"role" is required`)
-	}
-
-	pathToInstanceCert := m["cf_instance_cert"]
-	if pathToInstanceCert == "" {
-		pathToInstanceCert = os.Getenv("CF_INSTANCE_CERT")
-	}
-	if pathToInstanceCert == "" {
-		return nil, errors.New(`"cf_instance_cert" is required`)
-	}
-
-	pathToInstanceKey := m["cf_instance_key"]
-	if pathToInstanceKey == "" {
-		pathToInstanceKey = os.Getenv("CF_INSTANCE_KEY")
-	}
-	if pathToInstanceKey == "" {
-		return nil, errors.New(`"cf_instance_key" is required`)
-	}
-
-	certBytes, err := ioutil.ReadFile(pathToInstanceCert)
-	if err != nil {
-		return nil, err
-	}
-	cfInstanceCertContents := string(certBytes)
-
-	signingTime := time.Now().UTC()
-	signatureData := &signatures.SignatureData{
-		SigningTime:            signingTime,
-		Role:                   role,
-		CFInstanceCertContents: cfInstanceCertContents,
-	}
-	signature, err := signatures.Sign(pathToInstanceKey, signatureData)
-	if err != nil {
-		return nil, err
-	}
-
-	loginData := map[string]interface{}{
-		"role":             role,
-		"cf_instance_cert": cfInstanceCertContents,
-		"signing_time":     signingTime.Format(signatures.TimeFormat),
-		"signature":        signature,
-	}
-
-	path := fmt.Sprintf("auth/%s/login", mount)
-
-	secret, err := c.Logical().Write(path, loginData)
-	if err != nil {
-		return nil, err
-	}
-	if secret == nil {
-		return nil, errors.New("empty response from credential provider")
-	}
-	return secret, nil
-}
-
 func main() {
 	vaultAddr := os.Getenv("VAULT_ADDR")
 	client, err := api.NewClient(&api.Config{Address: vaultAddr, HttpClient: httpClient})
@@ -124,7 +60,8 @@ func main() {
 		"role": os.Getenv("ROLE"),
 	}
 
-	vaultSecret, err := cfAuth(client, loginData)
+	cliHandler := cfauth.CLIHandler{}
+	vaultSecret, err := cliHandler.Auth(client, loginData)
 	if err != nil {
 		log.Fatal(err)
 	}
