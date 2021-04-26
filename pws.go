@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
+	"text/template"
 	"time"
 
 	cfauth "github.com/hashicorp/vault-plugin-auth-cf"
@@ -45,11 +47,33 @@ type weatherCurrent struct {
 	} `json:"observations"`
 }
 
+//Index holds fields displayed on the index.html template
+type Index struct {
+	StationID    string
+	ReportTime   string
+	CurrentTempF int
+	CurrentTempC int
+	FeelsLikeF   int
+	FeelsLikeC   int
+	DewPointF    int
+	DewPointC    int
+	Humidity     int
+	WindSpeed    int
+	WindGust     int
+	WindDirC     string
+	WindDirD     int
+}
+
 var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
 func main() {
+	for _, element := range os.Environ() {
+		variable := strings.Split(element, "=")
+		fmt.Println(variable[0], "=>", variable[1])
+	}
+
 	vaultAddr := os.Getenv("VAULT_ADDR")
 	client, err := api.NewClient(&api.Config{Address: vaultAddr, HttpClient: httpClient})
 	if err != nil {
@@ -71,6 +95,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	http.Handle("/static/",
+		http.StripPrefix("/static/",
+			http.FileServer(http.Dir("static"))))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		url := fmt.Sprintf("%s?stationId=%s&format=json&units=%s&apiKey=%s",
@@ -98,44 +126,38 @@ func main() {
 		var responseObject weatherCurrent
 		json.Unmarshal(bodyBytes, &responseObject)
 		// fmt.Fprintf(w, "API Response as struct %+v\n", responseObject)
-		timeLayout := "15:04:05"
-		tz := fmt.Sprintf("%s", data.Data["tz"])
-		loc, err := time.LoadLocation(tz)
-		localTime := responseObject.Observations[0].ObsTimeUtc.In(loc)
+		var feelsLikeF int
+		var feelsLikeC int
+		if responseObject.Observations[0].Imperial.Temp > 70 {
+			feelsLikeF = responseObject.Observations[0].Imperial.HeatIndex
+			feelsLikeC = (((responseObject.Observations[0].Imperial.HeatIndex - 32) * 5) / 9)
+		} else {
+			feelsLikeF = responseObject.Observations[0].Imperial.WindChill
+			feelsLikeC = (((responseObject.Observations[0].Imperial.WindChill - 32) * 5) / 9)
+		}
 		compassDirs := []string{"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N"}
-		fmt.Fprintf(w, "Current Conditions for %s at %s are:\n",
+		compassIndex := responseObject.Observations[0].Winddir / 22
+		index := Index{
 			responseObject.Observations[0].StationID,
-			localTime.Format(timeLayout),
-		)
-		fmt.Fprintf(w, "Current:    %d\u00B0F (%d\u00B0C)\n",
+			responseObject.Observations[0].ObsTimeLocal,
 			responseObject.Observations[0].Imperial.Temp,
 			(((responseObject.Observations[0].Imperial.Temp - 32) * 5) / 9),
-		)
-		if responseObject.Observations[0].Imperial.Temp > 70 {
-			fmt.Fprintf(w, "Feels Like: %d\u00B0F (%d\u00B0C)\n",
-				responseObject.Observations[0].Imperial.HeatIndex,
-				(((responseObject.Observations[0].Imperial.HeatIndex - 32) * 5) / 9),
-			)
-		} else {
-			fmt.Fprintf(w, "Feels Like: %d\u00B0F (%d\u00B0C)\n",
-				responseObject.Observations[0].Imperial.WindChill,
-				(((responseObject.Observations[0].Imperial.WindChill - 32) * 5) / 9),
-			)
-		}
-		fmt.Fprintf(w, "Dew Point:  %d\u00B0F (%d\u00B0C)\n",
+			feelsLikeF,
+			feelsLikeC,
 			responseObject.Observations[0].Imperial.Dewpt,
 			(((responseObject.Observations[0].Imperial.Dewpt - 32) * 5) / 9),
-		)
-		fmt.Fprintf(w, "Humidity:   %d%%\n",
 			responseObject.Observations[0].Humidity,
-		)
-		compassIndex := responseObject.Observations[0].Winddir / 22
-		fmt.Fprintf(w, "Wind:       %s(%d\u00B0) @ %d-%d mph\n",
-			compassDirs[compassIndex],
-			responseObject.Observations[0].Winddir,
 			responseObject.Observations[0].Imperial.WindSpeed,
 			responseObject.Observations[0].Imperial.WindGust,
-		)
+			compassDirs[compassIndex],
+			responseObject.Observations[0].Winddir,
+		}
+
+		template := template.Must(template.ParseFiles("templates/index.html"))
+
+		if err := template.ExecuteTemplate(w, "index.html", index); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	})
 	fmt.Println(http.ListenAndServe(":8080", nil))
 }

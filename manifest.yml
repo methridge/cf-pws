@@ -1,11 +1,9 @@
 ---
 applications:
-- name: pws
-  instances: 1
-  memory: 64M
-  buildpacks:
-  - go_buildpack
-  env:
-    GOPACKAGENAME: github.com/methridge/cf-pws
-    ROLE: pws
-    VAULT_ADDR: https://vault.cf.methridge.dev
+  - name: pws
+    instances: 1
+    memory: 64M
+    env:
+      GOPACKAGENAME: github.com/methridge/cf-pws
+      ROLE: pws
+      VAULT_ADDR: https://methridgehc.ngrok.io
