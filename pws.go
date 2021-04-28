@@ -69,9 +69,12 @@ var httpClient = &http.Client{
 }
 
 func main() {
-	for _, element := range os.Environ() {
-		variable := strings.Split(element, "=")
-		fmt.Println(variable[0], "=>", variable[1])
+	// Debug printing of Environment
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		for _, element := range os.Environ() {
+			variable := strings.Split(element, "=")
+			fmt.Println(variable[0], "=>", variable[1])
+		}
 	}
 
 	vaultAddr := os.Getenv("VAULT_ADDR")
@@ -125,9 +128,10 @@ func main() {
 		}
 		var responseObject weatherCurrent
 		json.Unmarshal(bodyBytes, &responseObject)
-		// fmt.Fprintf(w, "API Response as struct %+v\n", responseObject)
-		var feelsLikeF int
-		var feelsLikeC int
+		if _, ok := os.LookupEnv("DEBUG"); ok {
+			fmt.Fprintf(w, "API Response as struct %+v\n", responseObject)
+		}
+		var feelsLikeF, feelsLikeC int
 		if responseObject.Observations[0].Imperial.Temp > 70 {
 			feelsLikeF = responseObject.Observations[0].Imperial.HeatIndex
 			feelsLikeC = (((responseObject.Observations[0].Imperial.HeatIndex - 32) * 5) / 9)

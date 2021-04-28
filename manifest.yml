@@ -6,4 +6,4 @@ applications:
     env:
       GOPACKAGENAME: github.com/methridge/cf-pws
       ROLE: pws
-      VAULT_ADDR: https://methridgehc.ngrok.io
+      VAULT_ADDR: https://vault.us-west1.gcp.methridge.com
