@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -47,7 +47,7 @@ type weatherCurrent struct {
 	} `json:"observations"`
 }
 
-//Index holds fields displayed on the index.html template
+// Index holds fields displayed on the index.html template
 type Index struct {
 	StationID    string
 	ReportTime   string
@@ -122,7 +122,7 @@ func main() {
 			fmt.Print(err.Error())
 		}
 		defer resp.Body.Close()
-		bodyBytes, err := ioutil.ReadAll(resp.Body)
+		bodyBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Print(err.Error())
 		}
